@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 40">
+  <g transform="skewX(-22)">
+    <rect x="14" y="2" width="30" height="21" rx="5" fill="#7BA568"/>
+    <rect x="28" y="16" width="30" height="21" rx="5" fill="#6B8A6E" style="mix-blend-mode:multiply"/>
+  </g>
+</svg>

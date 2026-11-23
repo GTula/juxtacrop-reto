@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <script>
+    // Opened as ".../demo" (no trailing slash): relative CSS/JS would resolve against the site root.
+    if (!location.pathname.endsWith('/') && !/\.html?$/.test(location.pathname)) location.replace(location.pathname + '/' + location.search + location.hash);
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>juxtacrop · Crop rotation helper</title>
+  <link rel="icon" href="assets/logo-mark.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/tour.css" />
+</head>
+<body>
+  <!-- Full-screen satellite map -->
+  <div id="map"></div>
+
+  <!-- Brand -->
+  <div class="demo-brand">
+  <a class="brand-pill" href="#" title="juxtacrop">
+    <svg class="brand-mark" viewBox="0 0 64 40" aria-hidden="true">
+      <g transform="skewX(-22)">
+        <rect x="14" y="2" width="30" height="21" rx="5" fill="#7BA568" />
+        <rect x="28" y="16" width="30" height="21" rx="5" fill="#6B8A6E" style="mix-blend-mode:multiply" />
+      </g>
+    </svg>
+    <span class="brand-name">juxtacrop</span>
+  </a>
+  </div>
+
+  <!-- ========== LEFT COLUMN ========== -->
+  <div class="col left">
+    <section class="pane" id="paneField">
+      <header class="pane-head"><h3>🗺️ Field area</h3><button class="pane-min" title="Minimize">–</button></header>
+      <div class="pane-body">
+        <div class="tools" id="mapTools">
+          <button class="tool" id="drawFieldBtn"><span>⬠</span>Outline field</button>
+          <button class="tool" id="drawParcelBtn"><span>✎</span>Draw plot</button>
+          <div class="tool split"><span>▦</span>Split into
+            <select id="splitN"><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select>
+            <button id="splitBtn" class="mini">OK</button>
+          </div>
+          <button class="tool danger" id="clearBtn"><span>✕</span>Clear</button>
+        </div>
+        <div id="plotList" class="plot-list"></div>
+      </div>
+    </section>
+
+    <section class="pane grow" id="paneRank">
+      <header class="pane-head"><h3>Ranked crops</h3><button class="pane-min" title="Minimize">–</button></header>
+      <div class="pane-body" id="rankBody"></div>
+    </section>
+  </div>
+
+  <!-- ========== RIGHT COLUMN ========== -->
+  <div class="col right">
+    <section class="pane grow" id="paneInput">
+      <header class="pane-head"><h3>Farmer input</h3><button class="pane-min" title="Minimize">–</button></header>
+      <div class="pane-body" id="inputBody"></div>
+    </section>
+
+    <section class="pane" id="paneWeather">
+      <header class="pane-head"><h3>Weather</h3><button class="pane-min" title="Minimize">–</button></header>
+      <div class="pane-body" id="weatherBody"></div>
+    </section>
+  </div>
+
+  <!-- Season / time slider (bottom right) -->
+  <div class="time-pane" id="timePane">
+    <div class="time-top"><span id="timeLabel">—</span><button class="link" id="timeReset" title="Back to the normal map">reset</button></div>
+    <input type="range" id="timeSlider" min="0" max="35" value="0" />
+  </div>
+
+  <!-- Rotation bar (bottom) -->
+  <div class="rot-bar" id="rotBar">
+    <button class="sim-btn" id="simBtn" title="Simulate the next 3 years"><span id="simIcon">▶</span><small>Simulate</small></button>
+    <div class="rb-main">
+      <div class="rb-plans" id="rbPlans"></div>
+      <div class="rb-circles" id="rbCircles"></div>
+    </div>
+  </div>
+
+  <!-- Map view (base imagery & overlays), top centre -->
+  <details class="layers" id="layers">
+    <summary>🛰️ Map view</summary>
+    <div class="layer-group">
+      <span class="lg-title">Show on the map</span>
+      <label><input type="checkbox" data-ov="slope" /> Slope of your field</label>
+      <label><input type="checkbox" data-ov="smap" /> Soil moisture</label>
+      <label><input type="checkbox" data-ov="ndvi" /> Plant greenness</label>
+      <label><input type="checkbox" data-ov="imerg" /> Rain right now</label>
+    </div>
+    <div id="legend" class="legend"></div>
+  </details>
+
+  <!-- Field shift for one season (opens above the tapped circle) -->
+  <div class="season-pop hidden" id="seasonPop"></div>
+
+  <div class="hint" id="hint"></div>
+  <div class="draw-bar" id="drawBar"></div>
+
+  <!-- ========== ONBOARDING ========== -->
+  <div class="modal" id="onboard">
+    <div class="modal-card onboard">
+      <svg class="onboard-mark" viewBox="0 0 64 40" aria-hidden="true">
+        <g transform="skewX(-22)">
+          <rect x="14" y="2" width="30" height="21" rx="5" fill="#7BA568" />
+          <rect x="28" y="16" width="30" height="21" rx="5" fill="#6B8A6E" style="mix-blend-mode:multiply" />
+        </g>
+      </svg>
+      <h1>Find a better crop rotation<br/><em>for your field.</em></h1>
+      <p class="muted">Show us your field and what you planted. We'll suggest rotations that protect your soil, using NASA satellite data.</p>
+      <form id="searchForm" class="search-row">
+        <input id="searchInput" class="input lg" placeholder="Where is your farm? Town or coordinates" autocomplete="off" />
+        <button class="btn primary" type="submit">Search</button>
+      </form>
+      <div id="searchResults" class="search-results"></div>
+      <div class="onboard-alt">
+        <button class="btn ghost" id="geoBtn">📍 Use my location</button>
+        <button class="btn soft" data-demo="iowa">✨ Try a sample farm (Iowa)</button>
+        <button class="btn soft" data-demo="uruguay">✨ Sample farm (Uruguay)</button>
+      </div>
+      <p class="muted xs disclaimer">We help you explore options. Always check with your local agronomist before changing your rotation.</p>
+    </div>
+  </div>
+
+  <!-- ========== HISTORY MODAL ========== -->
+  <div class="modal hidden" id="historyModal">
+    <div class="modal-card history">
+      <div class="modal-head">
+        <div>
+          <h2>What did you plant in <span id="hName"></span>?</h2>
+          <p class="muted xs">The last three years. Not sure? Leave it as “I don't know” — we'll reconstruct it from satellite images.</p>
+        </div>
+        <button class="icon-btn" data-close>✕</button>
+      </div>
+      <div class="history-body">
+        <div id="hRows" class="h-rows"></div>
+        <div class="h-side">
+          <div id="hPreview"></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" id="hCopyAll">Same for all plots</button>
+        <button class="btn primary" id="hDone">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== SATELLITE RECONSTRUCTION (simulated) ========== -->
+  <div class="modal hidden" id="reconModal" aria-live="polite">
+    <div class="modal-card recon" id="reconBody"></div>
+  </div>
+
+  <!-- ========== ROTATION DETAILS MODAL ========== -->
+  <div class="modal hidden" id="planModal">
+    <div class="modal-card plan-card" id="planBody"></div>
+  </div>
+
+  <!-- ========== "DATA BEHIND THIS" MODAL ========== -->
+  <div class="modal hidden" id="whyModal">
+    <div class="modal-card sources">
+      <div class="modal-head">
+        <div><h2 id="whyTitle">The data behind this plan</h2><p class="muted xs">Evidence, what we don't know, and every indicator compared with what you do now.</p></div>
+        <button class="icon-btn" data-close>✕</button>
+      </div>
+      <div id="whyBody" class="why-data"></div>
+    </div>
+  </div>
+
+  <!-- ========== DETAILED FIELD DATA MODAL ========== -->
+  <div class="modal hidden" id="dataModal">
+    <div class="modal-card sources">
+      <div class="modal-head">
+        <div><h2>What NASA sees around your field</h2><p class="muted xs">Satellite and climate data for your location</p></div>
+        <button class="icon-btn" data-close>✕</button>
+      </div>
+      <div class="data-body">
+        <div id="loadStatus" class="load-status"></div>
+        <div id="conditions" class="cond-grid"></div>
+        <button class="link" id="sourcesBtn">ⓘ About the data sources and their limits</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== SOURCES MODAL ========== -->
+  <div class="modal hidden" id="sourcesModal">
+    <div class="modal-card sources">
+      <div class="modal-head">
+        <div>
+          <h2>Data sources &amp; limits</h2>
+          <p class="muted xs">What each dataset contributes, at what scale, and what it cannot tell you.</p>
+        </div>
+        <button class="icon-btn" data-close>✕</button>
+      </div>
+      <div id="sourcesBody" class="sources-body"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/sources.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/tour.js"></script>
+</body>
+</html>
